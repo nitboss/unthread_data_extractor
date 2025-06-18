@@ -77,6 +77,7 @@ def main():
     setup_logging(args.log_level)
     logger.debug("Starting Unthread Data Extractor")
 
+    storage = None  # Initialize storage to None
     try:
         config = Config.from_env()
         logger.debug("Configuration loaded from environment")
@@ -115,9 +116,11 @@ def main():
 
         elif args.command == 'messages':
             logger.info("Starting messages extraction...")
-            created_after = parse_date(args.start_date) if args.start_date else None
-            created_before = parse_date(args.end_date) if args.end_date else None
-            
+            start_date = getattr(args, "start_date", None)
+            end_date = getattr(args, "end_date", None)
+            created_after = parse_date(start_date) if start_date else None
+            created_before = parse_date(end_date) if end_date else None
+
             if created_after or created_before:
                 logger.debug(f"Date range: {created_after} to {created_before}")
             logger.debug(f"Conversation ID: {args.conversation_id}")
@@ -145,7 +148,8 @@ def main():
         sys.exit(1)
     finally:
         logger.debug("Closing storage connection")
-        storage.close()
+        if storage is not None:
+            storage.close()
         logger.info("Extraction process completed")
 
 if __name__ == '__main__':

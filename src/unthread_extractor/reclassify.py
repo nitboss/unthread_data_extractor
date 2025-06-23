@@ -6,41 +6,35 @@ import duckdb
 import json
 import tiktoken
 from functools import lru_cache
+from unthread_extractor.storage import DuckDBStorage
 
 # Load environment variables from .env file
 load_dotenv()
 
 # Global cache for the system prompt
-_SYSTEM_PROMPT_CACHE: Optional[str] = None
-_OPTIMIZED_PROMPT_CACHE: Optional[str] = None
-_MODEL: str = "gpt-3.5-turbo"
+_RESOLUTION_PROMPT_CACHE: Optional[str] = None
+_CATEGORY_PROMPT_CACHE: Optional[str] = None
+_MODEL: str = "gpt-4o"
+_STORAGE = DuckDBStorage("data/unthread_data.duckdb")
 
-def get_system_prompt(use_optimized: bool = True) -> str:
+def get_system_prompt(type: str = "category") -> str:
     """Get the system prompt, cached for efficiency."""
-    global _SYSTEM_PROMPT_CACHE, _OPTIMIZED_PROMPT_CACHE
+    global _RESOLUTION_PROMPT_CACHE, _CATEGORY_PROMPT_CACHE
     
-    if use_optimized:
-        if _OPTIMIZED_PROMPT_CACHE is None:
-            prompt_path = os.path.join(os.path.dirname(__file__), "..", "..", "prompts", "reclassify_optimized.md")
-            with open(prompt_path, "r") as file:
-                _OPTIMIZED_PROMPT_CACHE = file.read()
-        return _OPTIMIZED_PROMPT_CACHE
-    else:
-        if _SYSTEM_PROMPT_CACHE is None:
+    if type == "category":
+        if _CATEGORY_PROMPT_CACHE is None:
             prompt_path = os.path.join(os.path.dirname(__file__), "..", "..", "prompts", "reclassify.md")
             with open(prompt_path, "r") as file:
-                _SYSTEM_PROMPT_CACHE = file.read()
-        return _SYSTEM_PROMPT_CACHE
-
-def count_tokens(text: str, model: str = "gpt-3.5-turbo") -> int:
-    """Count tokens in text using tiktoken."""
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-        return len(encoding.encode(text))
-    except KeyError:
-        # Fallback to cl100k_base encoding for gpt-3.5-turbo
-        encoding = tiktoken.get_encoding("cl100k_base")
-        return len(encoding.encode(text))
+                _CATEGORY_PROMPT_CACHE = file.read()
+        return _CATEGORY_PROMPT_CACHE
+    elif type == "resolution":
+        if _RESOLUTION_PROMPT_CACHE is None:
+            prompt_path = os.path.join(os.path.dirname(__file__), "..", "..", "prompts", "resolution.md")
+            with open(prompt_path, "r") as file:
+                _RESOLUTION_PROMPT_CACHE = file.read()
+        return _RESOLUTION_PROMPT_CACHE
+    else:
+        raise ValueError(f"Invalid type: {type}")
 
 def generate_llm_response_batch(conversations: List[Dict[str, Any]], batch_size: int = 5) -> List[Dict[str, Any]]:
     """
@@ -51,7 +45,7 @@ def generate_llm_response_batch(conversations: List[Dict[str, Any]], batch_size:
         raise ValueError("OPENAI_API_KEY environment variable not set")
     
     client = OpenAI(api_key=api_key)
-    system_prompt = get_system_prompt(False)
+    system_prompt = get_system_prompt("resolution")
     
     results = []
     
@@ -67,8 +61,7 @@ def generate_llm_response_batch(conversations: List[Dict[str, Any]], batch_size:
         batched_prompt += "Please respond with a JSON array containing the classification for each case in order."
         
         # Count tokens for monitoring
-        total_tokens = count_tokens(system_prompt + batched_prompt)
-        print(f"Batch {i//batch_size + 1}: Processing {len(batch)} conversations, ~{total_tokens} tokens")
+        print(f"Batch {i//batch_size + 1}: Processing {len(batch)} conversations")
         
         try:
             response = client.chat.completions.create(
@@ -101,74 +94,6 @@ def generate_llm_response_batch(conversations: List[Dict[str, Any]], batch_size:
     
     return results
 
-def get_conversations() -> List[Dict[str, Any]]:
-    """Get conversations from the database."""
-    conn = duckdb.connect('data/unthread_data.duckdb')
-    with open('data/extract_for_summary.sql', 'r') as f:
-        query = f.read()
-    results = conn.execute(query).fetchall()
-    
-    # Convert to list of dictionaries
-    conversations = []
-    for row in results:
-        conv = {
-            'conversation_id': row[0],
-            'ticket_type': row[13],
-            'message_content': row[20]
-        }
-        conversations.append(conv)
-    
-    return conversations
-
-def save_classifications_to_db(conversations: List[Dict[str, Any]], results: List[Dict[str, Any]]):
-    """
-    Save classification results to the database.
-    """
-    # Create connection to database
-    conn = duckdb.connect('data/unthread_data.duckdb')
-    
-    # Create table if it doesn't exist
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS conversation_classifications (
-            conversation_id VARCHAR,
-            category VARCHAR,
-            sub_category VARCHAR,
-            reasoning TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    
-    # Prepare data for insertion
-    classification_data = []
-    for conversation, result in zip(conversations, results):
-        if isinstance(result, dict) and 'error' not in result:
-            classification_data.append((
-                conversation['conversation_id'],
-                result.get('category', 'Unknown'),
-                result.get('sub_category', 'Unknown'),
-                result.get('reasoning', '')
-            ))
-        else:
-            # Handle error cases
-            classification_data.append((
-                conversation['conversation_id'],
-                'Error',
-                'Error',
-                str(result) if result else 'Unknown error'
-            ))
-    
-    # Insert data into table
-    if classification_data:
-        conn.executemany("""
-            INSERT INTO conversation_classifications 
-            (conversation_id, category, sub_category, reasoning)
-            VALUES (?, ?, ?, ?)
-        """, classification_data)
-        
-        print(f"Saved {len(classification_data)} classifications to database")
-    
-    conn.close()
-
 def process_conversations_batch(conversations: List[Dict[str, Any]], batch_size: int = 5, max_conversations: Optional[int] = None):
     """
     Process conversations in batches for efficiency.
@@ -182,10 +107,10 @@ def process_conversations_batch(conversations: List[Dict[str, Any]], batch_size:
     results = generate_llm_response_batch(conversations, batch_size)
     
     # Save results to database
-    save_classifications_to_db(conversations, results)
+    _STORAGE.save_classifications(conversations, results)
 
 if __name__ == "__main__":
-    conversations = get_conversations()
+    conversations = _STORAGE.get_conversations()
     
     # Use batch processing for efficiency
-    process_conversations_batch(conversations, batch_size=5, max_conversations=10)
+    process_conversations_batch(conversations, batch_size=10, max_conversations=100)

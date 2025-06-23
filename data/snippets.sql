@@ -57,3 +57,36 @@ from messages
 where 1 = 1
   AND data.text IS NOT NULL 
   AND data.text <> '""';
+
+-- COMBINED CONVERSATIONS AND MESSAGES
+select id
+  , data.conversationId
+  , data.timestamp
+  , data.updatedAt
+  , data.isPrivateNote
+  , data.botName
+  , COALESCE(NULLIF(data->'user'->>'email', ''), data->'sentByUser'->>'email') AS sender
+  , data.text
+  , (
+    STRPOS(data->>'text', 'langchain.slack.com') > 0
+    OR (
+      LOWER(COALESCE(NULLIF(data->'user'->>'email', ''), data->'sentByUser'->>'email')) LIKE '%@langchain.dev'
+      AND LOWER(COALESCE(NULLIF(data->'user'->>'email', ''), data->'sentByUser'->>'email')) NOT IN ('chad@langchain.dev', 'crystal@langchain.dev', 'nithin@langchain.dev')
+    )
+  ) AS internalEscalation
+from messages
+where 1 = 1
+  AND data.text IS NOT NULL 
+  AND data.text <> '""';
+
+-- STATS for conversations
+SELECT 
+  category
+  , sub_category
+  , count(1) AS cases
+FROM conversation_classifications
+WHERE 1 = 1
+GROUP BY
+  category
+  , sub_category
+ORDER BY 1, 3 desc

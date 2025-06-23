@@ -62,6 +62,17 @@ class DuckDBStorage:
                 data JSON,
             )
         """)
+        
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_classifications (
+                conversation_id VARCHAR PRIMARY KEY,
+                category VARCHAR,
+                sub_category VARCHAR,
+                reasoning TEXT,
+                resolution VARCHAR,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP 
+            )
+        """)
         logger.debug("Database tables created successfully")
     
     def store_users(self, users: List[Dict[str, Any]]):
@@ -131,4 +142,55 @@ class DuckDBStorage:
         if hasattr(self, 'conn'):
             logger.debug("Closing database connection")
             self.conn.close()
-            logger.info("Database connection closed") 
+            logger.info("Database connection closed")
+
+    def save_classifications(self, conversations: List[Dict[str, Any]], results: List[Dict[str, Any]]):
+        """
+        Save classification results to the database using UPSERT, updating only non-null values.
+        """
+        classification_data = []
+        for conversation, result in zip(conversations, results):
+            if isinstance(result, dict) and 'error' not in result:
+                classification_data.append((
+                    conversation['conversation_id'],
+                    result.get('category'),
+                    result.get('sub_category'),
+                    result.get('reasoning'),
+                    result.get('resolution')
+                ))
+            else:
+                classification_data.append((
+                    conversation['conversation_id'],
+                    'Error',
+                    'Error',
+                    str(result) if result else 'Unknown error',
+                    'Error'
+                ))
+        for row in classification_data:
+            self.conn.execute("""
+                INSERT INTO conversation_classifications 
+                    (conversation_id, category, sub_category, reasoning, resolution)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(conversation_id) DO UPDATE SET
+                    category = CASE WHEN excluded.category IS NOT NULL THEN excluded.category ELSE conversation_classifications.category END,
+                    sub_category = CASE WHEN excluded.sub_category IS NOT NULL THEN excluded.sub_category ELSE conversation_classifications.sub_category END,
+                    reasoning = CASE WHEN excluded.reasoning IS NOT NULL THEN excluded.reasoning ELSE conversation_classifications.reasoning END,
+                    resolution = CASE WHEN excluded.resolution IS NOT NULL THEN excluded.resolution ELSE conversation_classifications.resolution END
+            """, row)
+        logger.info(f"Saved {len(classification_data)} classifications to database (UPSERT)")
+
+    def get_conversations(self) -> List[Dict[str, Any]]:
+        """Get conversations from the database."""
+        with open('data/extract_for_summary.sql', 'r') as f:
+            query = f.read()
+        results = self.conn.execute(query).fetchall()
+        # Convert to list of dictionaries
+        conversations = []
+        for row in results:
+            conv = {
+                'conversation_id': row[0],
+                'ticket_type': row[13],
+                'message_content': row[20]
+            }
+            conversations.append(conv)
+        return conversations 

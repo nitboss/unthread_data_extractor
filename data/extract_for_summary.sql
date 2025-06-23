@@ -1,25 +1,4 @@
 -- COMBINED CONVERSATIONS AND MESSAGES
-select id
-  , data.conversationId
-  , data.timestamp
-  , data.updatedAt
-  , data.isPrivateNote
-  , data.botName
-  , COALESCE(NULLIF(data->'user'->>'email', ''), data->'sentByUser'->>'email') AS sender
-  , data.text
-  , (
-    STRPOS(data->>'text', 'langchain.slack.com') > 0
-    OR (
-      LOWER(COALESCE(NULLIF(data->'user'->>'email', ''), data->'sentByUser'->>'email')) LIKE '%@langchain.dev'
-      AND LOWER(COALESCE(NULLIF(data->'user'->>'email', ''), data->'sentByUser'->>'email')) NOT IN ('chad@langchain.dev', 'crystal@langchain.dev', 'nithin@langchain.dev')
-    )
-  ) AS internalEscalation
-from messages
-where 1 = 1
-  AND data.text IS NOT NULL 
-  AND data.text <> '""';
-
--- COMBINED CONVERSATIONS AND MESSAGES
 WITH escalated_conversations AS (
   SELECT 
     data->>'conversationId' AS conversationId,
@@ -45,6 +24,15 @@ message_texts AS (
     AND CAST(data->>'text' AS VARCHAR) <> '""'
     AND CAST(data->>'text' AS VARCHAR) IS NOT NULL
   GROUP BY data->>'conversationId'
+),
+classifications AS (
+  SELECT 
+    conversation_id AS conversationId,
+    category,
+    sub_category,
+    reasoning,
+    resolution
+  FROM conversation_classifications
 )
 SELECT 
   c.id,
@@ -71,10 +59,17 @@ SELECT
   c.data->>'sentiment' AS sentiment,
   COALESCE(e.internalEscalation, false) AS internalEscalation, 
   date_trunc('week', CAST(c.data->>'createdAt' AS date)) AS creation_week,
-  mt.allMessages 
+  mt.allMessages,
+  cl.category,
+  cl.sub_category,
+  cl.reasoning,
+  cl.resolution
 FROM conversations c
 LEFT JOIN escalated_conversations e
   ON c.id = e.conversationId
 LEFT JOIN message_texts mt
   ON c.id = mt.conversationId
-LIMIT 10;
+LEFT JOIN classifications cl
+  ON c.id = cl.conversationId
+WHERE cl.resolution is null
+LIMIT 100;

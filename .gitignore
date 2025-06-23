@@ -4,6 +4,7 @@ env/
 ENV/
 .venv/
 .env/
+.env
 
 # Backup files
 backup/

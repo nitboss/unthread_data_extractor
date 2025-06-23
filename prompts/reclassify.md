@@ -21,7 +21,7 @@ You must use one of the following Category and Sub Category combinations.
 * Data Deletion => For GDPR requests and account removal
 * Security, Privacy and Compliance => For SOC 2, HIPAA, DPA requests; security disclosures
 
-2. Category: LangChain
+2. Category: LangChain => Limited to LangChain open source libraries
 * Sub Category:
 * OSS - JS => For questions about the LangChain JavaScript open-source library
 * OSS - Python => For questions about the LangChain Python open-source library
@@ -41,9 +41,9 @@ You must use one of the following Category and Sub Category combinations.
 * Pricing => For pre-sales questions about plan costs and features. Also includes advise on cost estimation and optimizations
 * Administration => For org-level settings within LangSmith
 
-4. Category: LangGraph
+4. Category: LangGraph => Orchestration logic to build agents. All compute infra points to LangGraph platform
 * Sub Category:
-* LangGraph Platform => For issues with the managed cloud/server platform. Includes runtime issues, alerts, deployment setup
+* LangGraph Platform => For issues with the managed cloud/server platform. Includes runtime issues, alerts, deployment setup. Often times LangGraph Platform is not mentioned explicitly, instead replicas, auto scaling, mount points, memory, disk usage are mentioned instead indicating compute infra. 
 * OSS - JS => For questions about the LangGraph JavaScript open-source library
 * OSS - Python => For questions about the LangGraph Python open-source library
 * Studio => For issues with the desktop application or visualizing agent graphs on the SaaS infrastructure

@@ -70,10 +70,39 @@ class DuckDBStorage:
                 sub_category VARCHAR,
                 reasoning TEXT,
                 resolution VARCHAR,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP 
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_time TIMESTAMP
             )
         """)
+        
+        # Ensure updated_time column exists (for existing databases)
+        self._ensure_updated_time_column()
+        
         logger.debug("Database tables created successfully")
+    
+    def _ensure_updated_time_column(self):
+        """Ensure updated_time column exists in conversation_classifications table"""
+        try:
+            # Check if updated_time column exists
+            columns = self.conn.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'conversation_classifications' 
+                AND column_name = 'updated_time'
+            """).fetchall()
+            
+            if not columns:
+                logger.info("Adding updated_time column to conversation_classifications table")
+                self.conn.execute("""
+                    ALTER TABLE conversation_classifications 
+                    ADD COLUMN updated_time TIMESTAMP
+                """)
+                logger.info("Successfully added updated_time column")
+            else:
+                logger.debug("updated_time column already exists")
+                
+        except Exception as e:
+            logger.warning(f"Could not check/add updated_time column: {str(e)}")
     
     def store_users(self, users: List[Dict[str, Any]]):
         """Store users in the database
@@ -142,7 +171,7 @@ class DuckDBStorage:
         if hasattr(self, 'conn'):
             logger.debug("Closing database connection")
             self.conn.close()
-            logger.info("Database connection closed")
+            logger.debug("Database connection closed")
 
     def save_classifications(self, conversations: List[Dict[str, Any]], results: List[Dict[str, Any]]):
         """
@@ -194,3 +223,57 @@ class DuckDBStorage:
             }
             conversations.append(conv)
         return conversations 
+
+    def get_classifications_for_update(self) -> List[Dict[str, Any]]:
+        """Get classifications from database that need to be updated
+        
+        Returns:
+            List of classification data dictionaries
+        """
+        query = """
+            SELECT 
+                conversation_id,
+                category,
+                sub_category,
+                resolution,
+                created_at
+            FROM conversation_classifications 
+            WHERE 1 = 1
+                AND category IS NOT NULL 
+                AND resolution IS NOT NULL
+                AND (updated_time IS NULL OR updated_time < created_at)
+            ORDER BY created_at DESC
+            LIMIT 100
+        """
+        try:
+            results = self.conn.execute(query).fetchall()
+            classifications = []
+            for row in results:
+                classification = {
+                    'conversation_id': row[0],
+                    'category': row[1],
+                    'sub_category': row[2],
+                    'resolution': row[3],
+                    'created_at': row[4]
+                }
+                classifications.append(classification)
+            return classifications
+        except Exception as e:
+            logger.error(f"Error fetching classifications: {str(e)}")
+            raise
+
+    def mark_conversation_updated(self, conversation_id: str):
+        """Mark a conversation as successfully updated in the database
+        
+        Args:
+            conversation_id: The conversation ID to mark as updated
+        """
+        try:
+            update_query = """
+                UPDATE conversation_classifications 
+                SET updated_time = CURRENT_TIMESTAMP 
+                WHERE conversation_id = ?
+            """
+            self.conn.execute(update_query, [conversation_id])
+        except Exception as e:
+            logger.error(f"Error marking conversation {conversation_id} as updated: {str(e)}") 

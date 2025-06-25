@@ -11,6 +11,7 @@ from .api import UnthreadAPI
 from .config import Config
 from .extractor import UnthreadExtractor
 from .storage import DuckDBStorage
+from .updater import UnthreadUpdater
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,10 @@ def main():
 
     # All command
     all_parser = subparsers.add_parser('all', help='Extract all data')
+
+    # Update command
+    update_parser = subparsers.add_parser('update', help='Update conversations with classifications from database')
+    update_parser.add_argument('--batch-size', type=int, default=50, help='Number of conversations to update in each batch (default: 50)')
 
     # Common arguments
     parser.add_argument('--log-level', default='INFO', help='Set the logging level')
@@ -137,6 +142,16 @@ def main():
             extractor.download_users()
             extractor.download_conversations()
             logger.info("Full data extraction completed successfully")
+
+        elif args.command == 'update':
+            logger.info("Starting update process...")
+            updater = UnthreadUpdater(api, storage, batch_size=args.batch_size)
+            try:
+                results = updater.update_all_conversations()
+                logger.info(f"Update process completed. Results: {results}")
+            finally:
+                updater.close()
+            logger.info("Update process completed successfully")
 
         else:
             logger.warning("No command specified")

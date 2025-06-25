@@ -90,3 +90,12 @@ GROUP BY
   category
   , sub_category
 ORDER BY 1, 3 desc
+
+
+-- Slack channels
+SELECT data.name
+  , data.slackChannel.name as slackChannel
+  , data.slackChannel.isPrivate
+  , data.externalCrmMetadata.id as sfdc_id	
+  , data.tags[0].tier
+FROM customers;

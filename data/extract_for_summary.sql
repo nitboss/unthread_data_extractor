@@ -59,6 +59,10 @@ SELECT
   c.data->>'sentiment' AS sentiment,
   COALESCE(e.internalEscalation, false) AS internalEscalation, 
   date_trunc('week', CAST(c.data->>'createdAt' AS date)) AS creation_week,
+  CASE 
+    WHEN c.data->>'status' = 'closed' THEN date_trunc('day', CAST(c.data->>'closedAt' AS date)) - date_trunc('day', CAST(c.data->>'createdAt' AS date)) 
+    ELSE date_trunc('day', CURRENT_DATE) - date_trunc('day', CAST(c.data->>'createdAt' AS date)) 
+  END AS age,
   mt.allMessages,
   cl.category,
   cl.sub_category,

@@ -75,6 +75,16 @@ class DuckDBStorage:
             )
         """)
         
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS clio_clusters (
+                example_id VARCHAR PRIMARY KEY,
+                unthread_id VARCHAR,
+                summary VARCHAR,
+                cluster_name VARCHAR,
+                category VARCHAR
+            )
+        """)
+        
         # Ensure updated_time column exists (for existing databases)
         self._ensure_updated_time_column()
         
@@ -232,16 +242,18 @@ class DuckDBStorage:
         """
         query = """
             SELECT 
-                conversation_id,
-                category,
-                sub_category,
-                resolution,
-                created_at
-            FROM conversation_classifications 
+                cc.conversation_id,
+                cc.category,
+                cc.sub_category,
+                cc.resolution,
+                cl.cluster_name as cluster,
+                cc.created_at
+            FROM conversation_classifications cc
+                LEFT JOIN clio_clusters cl ON cc.conversation_id = cl.unthread_id
             WHERE 1 = 1
-                AND category IS NOT NULL 
-                AND resolution IS NOT NULL
-                AND (updated_time IS NULL OR updated_time < created_at)
+                AND cc.category IS NOT NULL 
+                AND cc.resolution IS NOT NULL
+                AND (cc.updated_time IS NULL)
             ORDER BY created_at DESC
             LIMIT 100
         """
@@ -254,7 +266,8 @@ class DuckDBStorage:
                     'category': row[1],
                     'sub_category': row[2],
                     'resolution': row[3],
-                    'created_at': row[4]
+                    'cluster': row[4],
+                    'created_at': row[5]
                 }
                 classifications.append(classification)
             return classifications

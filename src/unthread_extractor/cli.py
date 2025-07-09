@@ -12,6 +12,7 @@ from .config import Config
 from .extractor import UnthreadExtractor
 from .storage import DuckDBStorage
 from .updater import UnthreadUpdater
+from .reclassify import process_conversations_batch
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,11 @@ def main():
     # Update command
     update_parser = subparsers.add_parser('update', help='Update conversations with classifications from database')
     update_parser.add_argument('--batch-size', type=int, default=50, help='Number of conversations to update in each batch (default: 50)')
+
+    # Reclassify command
+    reclassify_parser = subparsers.add_parser('reclassify', help='Reclassify conversations using LLM')
+    reclassify_parser.add_argument('--batch-size', type=int, default=10, help='Number of conversations to process in each batch (default: 10)')
+    reclassify_parser.add_argument('--max-conversations', type=int, default=100, help='Maximum number of conversations to process (default: 100)')
 
     # Common arguments
     parser.add_argument('--log-level', default='INFO', help='Set the logging level')
@@ -152,6 +158,16 @@ def main():
             finally:
                 updater.close()
             logger.info("Update process completed successfully")
+
+        elif args.command == 'reclassify':
+            logger.info("Starting reclassification process...")
+            conversations = storage.get_conversations()
+            try:
+                process_conversations_batch(conversations, batch_size=args.batch_size, max_conversations=args.max_conversations)
+                logger.info("Reclassification process completed successfully")
+            except Exception as e:
+                logger.error(f"Error during reclassification: {str(e)}", exc_info=True)
+                sys.exit(1)
 
         else:
             logger.warning("No command specified")

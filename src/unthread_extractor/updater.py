@@ -56,13 +56,15 @@ class UnthreadUpdater:
         if field_name == "category":
             return "1a6900f6-36d2-4380-ad06-790b0b05c4b3"
         elif field_name == "sub_category":
-            return "1a6900f6-36d2-4380-ad06-790b0b05c4b3"
+            return "05492140-551c-49ea-a8a2-4caeec8cda4d"
         elif field_name == "resolution":
             return "5ccb3d90-fbaf-4eea-ac88-ef3a82705ab2"
+        elif field_name == "cluster":
+            return "59f823e5-921d-4a4d-81bb-052fb2c8593a"
         else:
             return None
         
-    def update_conversation(self, conversation_id: str, category: str, sub_category: str, resolution: str) -> bool:
+    def update_conversation(self, conversation_id: str, category: str, sub_category: str, resolution: str, cluster: str) -> bool:
         """Update a single conversation via API
         
         Args:
@@ -78,14 +80,14 @@ class UnthreadUpdater:
             ticketTypeFields = {}
             ticketTypeFields[self.get_custom_field_id("category")] = category
             ticketTypeFields[self.get_custom_field_id("resolution")] = resolution
-            if sub_category:
-                ticketTypeFields[self.get_custom_field_id("sub_category")] = sub_category
+            ticketTypeFields[self.get_custom_field_id("sub_category")] = sub_category
+            ticketTypeFields[self.get_custom_field_id("cluster")] = cluster
                 
             update_data = {
                 "ticketTypeFields": ticketTypeFields
             }
             
-            logger.debug(f"Updating conversation {conversation_id} with category: {category}, resolution: {resolution}, sub_category: {sub_category}")
+            logger.debug(f"Updating conversation {conversation_id} with category: {category}, resolution: {resolution}, sub_category: {sub_category}, cluster: {cluster}")
             
             # Make the PATCH request
             response_data, _, _ = self.api.make_api_request(
@@ -119,10 +121,11 @@ class UnthreadUpdater:
             conversation_id = classification['conversation_id']
             category = classification['category']
             resolution = classification['resolution']
-            sub_category = classification['sub_category']
+            sub_category = classification['sub_category']   
+            cluster = classification['cluster']
             
             try:
-                success = self.update_conversation(conversation_id, category, sub_category, resolution)
+                success = self.update_conversation(conversation_id, category, sub_category, resolution, cluster)
                 
                 if success:
                     self.storage.mark_conversation_updated(conversation_id)

@@ -72,8 +72,8 @@ def test_cli_conversations_command(mock_extractor):
         ]):
             main()
             mock_extractor.download_conversations.assert_called_once_with(
-                created_after=datetime(2024, 3, 1).isoformat(),
-                created_before=datetime(2024, 3, 20).isoformat(),
+                modified_after=datetime(2024, 3, 1).isoformat(),
+                modified_before=datetime(2024, 3, 20).isoformat(),
                 conversation_id=None
             )
 
@@ -90,11 +90,7 @@ def test_cli_messages_command(mock_extractor):
             '--conversation-id', 'test-conv-id'
         ]):
             main()
-            mock_extractor.download_messages.assert_called_once_with(
-                'test-conv-id',
-                created_after=None,
-                created_before=None
-            )
+            mock_extractor.download_messages.assert_called_once_with('test-conv-id')
 
 def test_cli_all_command(mock_extractor):
     """Test all command"""

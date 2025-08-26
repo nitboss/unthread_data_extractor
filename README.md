@@ -37,8 +37,14 @@ unthread-extractor conversations
 # Extract a specific conversation
 unthread-extractor conversations --conversation-id <id>
 
-# Extract conversations within a date range
+# Extract conversations modified within a date range
 unthread-extractor conversations --start-date 2024-01-01 --end-date 2024-03-15
+
+# Extract conversations with parallel processing for faster downloads
+unthread-extractor conversations --start-date 2024-01-01 --end-date 2024-03-15 --parallel
+
+# Extract conversations with custom parallel processing settings
+unthread-extractor conversations --start-date 2024-01-01 --end-date 2024-03-15 --parallel --max-workers 10 --batch-size 20
 ```
 
 ### Extract Messages
@@ -46,15 +52,19 @@ unthread-extractor conversations --start-date 2024-01-01 --end-date 2024-03-15
 ```bash
 # Extract messages for a specific conversation
 unthread-extractor messages --conversation-id <id>
-
-# Extract messages within a date range
-unthread-extractor messages --start-date 2024-01-01 --end-date 2024-03-15
 ```
 
 ### Extract All Data
 
 ```bash
+# Extract all data sequentially
 unthread-extractor all
+
+# Extract all data with parallel processing for faster downloads
+unthread-extractor all --parallel
+
+# Extract all data with custom parallel processing settings
+unthread-extractor all --parallel --max-workers 10 --batch-size 20
 ```
 
 This will download all users, conversations, and messages.
@@ -76,6 +86,58 @@ This command will:
 4. Process conversations in batches to avoid overwhelming the API
 5. Track progress with detailed logging
 6. Mark successfully updated conversations with an `updated_time` timestamp in the database
+
+### Migrate Ticket Categories
+
+```bash
+# Migrate all ticket categories (default batch size: 50)
+unthread-extractor migrate-categories
+
+# Migrate with custom batch size
+unthread-extractor migrate-categories --batch-size 25
+
+# Limit the number of tickets to process
+unthread-extractor migrate-categories --max-tickets 100
+
+# Migrate specific tickets by ID
+unthread-extractor migrate-categories --ticket-ids 00024725-496d-40fd-b7eb-0accc6e4badb 00121463-07ef-41d9-8432-14d2d4d0753b
+
+# Dry run to see what would be migrated without making API calls
+unthread-extractor migrate-categories --dry-run
+```
+
+This command will:
+1. List all tickets from the local DuckDB instance with pagination (or specific tickets by ID)
+2. Read the category and sub-category fields from the `ticketTypeFields` JSON of each ticket
+3. Create a new `migration_category` field by combining category and sub-category values
+4. Save the new custom field back into Unthread via an API call (preserving existing fields)
+5. Process tickets in batches to avoid overwhelming the API
+6. Track progress with detailed logging and error reporting
+
+**Field Mappings:**
+- Category Field ID: `1a6900f6-36d2-4380-ad06-790b0b05c4b3`
+- Sub-Category Field ID: `05492140-551c-49ea-a8a2-4caeec8cda4d`
+- Migration Category Field ID: `0598cba1-31d1-466e-bfd1-812548c73c51`
+
+**Migration Logic:**
+- If both category and sub-category exist: `"{category} - {sub_category}"`
+- If only category exists: `"{category}"`
+- If only sub-category exists: `"{sub_category}"`
+- If neither exists: `""` (empty string)
+
+**Standalone Script:**
+You can also run the migration directly using the standalone script:
+
+```bash
+# Make the script executable (first time only)
+chmod +x migrate_categories.py
+
+# Run the migration
+./migrate_categories.py --batch-size 50 --max-tickets 100
+
+# Dry run
+./migrate_categories.py --dry-run
+```
 
 ## Database
 
@@ -131,9 +193,48 @@ The table includes:
 - `updated_time`: When the conversation was successfully updated via API (NULL if not yet updated)
 ```
 
-## Development
+## Performance Optimization
 
-1. Clone the repository:
+### Parallel Processing
+
+For large datasets, you can significantly improve download speed using parallel processing:
+
+```bash
+# Enable parallel processing with default settings (5 workers, batch size 10)
+unthread-extractor conversations --parallel
+
+# Customize parallel processing
+unthread-extractor conversations --parallel --max-workers 10 --batch-size 20
+```
+
+**Performance Benefits:**
+- **3-5x faster** downloads for large datasets
+- **Concurrent API requests** reduce total wait time
+- **Batch processing** optimizes memory usage
+- **Thread-safe** implementation with separate API clients per thread
+
+**Recommended Settings:**
+- **Small datasets (< 1000 conversations)**: Use default settings (`--max-workers 5`)
+- **Medium datasets (1000-10000 conversations)**: Use `--max-workers 10`
+- **Large datasets (> 10000 conversations)**: Use `--max-workers 15-20`
+
+**Important Notes:**
+- Parallel processing uses more memory and CPU
+- Be mindful of API rate limits when increasing worker count
+- Monitor your API usage to avoid hitting limits
+- Start with lower worker counts and increase gradually
+
+### Performance Testing
+
+Run the performance test script to compare sequential vs parallel processing:
+
+```bash
+python performance_test.py
+```
+
+This will test both methods on a 7-day dataset and show speedup metrics.
+
+## Development
 ```bash
 git clone https://github.com/yourusername/unthread-data-extractor.git
 cd unthread-data-extractor
